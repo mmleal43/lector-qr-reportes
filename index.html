@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALDISAN – Reporte de Carga (Generar + Escanear)</title>
+
+<!-- Librerías (para APK puedes servirlas locales en ./libs/) -->
+<link rel="preconnect" href="https://cdnjs.cloudflare.com"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+<style>
+  :root{
+    --bg:#0b1220; --panel:#141824; --border:#1e2535; --ink:#eaf2ff; --muted:#9bb0c9; --brand:#00e5ff; --accent:#7cf3ff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Roboto}
+  .wrap{max-width:1100px;margin:auto;padding:16px}
+  h1{margin:10px 0 8px;text-align:center;color:var(--brand)}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:10px 0 16px}
+  .tabbtn{background:#0f1422;color:var(--ink);border:1px solid var(--border);padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:700}
+  .tabbtn.active{outline:2px solid var(--brand)}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px}
+  .grid{display:grid;gap:12px}
+  @media(min-width:900px){ .grid.cols-2{grid-template-columns:1fr 1fr} }
+  label{display:block;font-size:.9rem;color:var(--muted);margin-bottom:6px}
+  input,select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0f1422;color:var(--ink)}
+  button{background:var(--brand);color:#00111a;border:none;padding:11px 16px;border-radius:12px;font-weight:800;cursor:pointer}
+  button.secondary{background:#0f1422;color:var(--ink);border:1px solid var(--border)}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .actions{display:flex;gap:10px;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border-bottom:1px solid var(--border);padding:8px;text-align:left;font-size:.95rem}
+  #qr,#qrPrint{display:grid;place-items:center;min-height:220px;background:#0f1422;border:1px dashed var(--border);border-radius:12px}
+  .note{color:var(--muted);font-size:.9rem}
+  .kv{display:grid;grid-template-columns:180px 1fr;gap:8px;font-size:.95rem}
+  .kv b{color:#cfe6ff}
+  .tag{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:.8rem;color:var(--muted)}
+  .list li{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid var(--border)}
+
+  /* Impresión */
+  @media print{
+    .tabs, .tabbtn, #reader, .no-print, .actions, .note { display:none !important }
+    body{ background:#fff; color:#000 }
+    .panel{ border:none; box-shadow:none }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ALDISAN – Reporte de Carga</h1>
+  <div class="tabs no-print">
+    <button class="tabbtn active" data-tab="generar">Generar</button>
+    <button class="tabbtn" data-tab="escanear">Escanear</button>
+    <button class="tabbtn" data-tab="historial">Historial</button>
+  </div>
+
+  <!-- PANEL: GENERAR -->
+  <section id="tab-generar" class="panel">
+    <div class="grid cols-2">
+      <div>
+        <h3>Datos de la unidad</h3>
+        <label>Operador</label><input id="operador" placeholder="Nombre del operador">
+        <label>Placas</label><input id="placas" placeholder="ABC-123-X">
+        <label>Tipo de unidad</label>
+        <select id="tipo">
+          <option value="Camioneta">Camioneta</option>
+          <option value="Tráiler">Tráiler</option>
+          <option value="Torton">Torton</option>
+        </select>
+        <label>Marca</label><input id="marca" placeholder="Kenworth / Freightliner / Nissan">
+        <label>Número de tarimas</label><input id="tarimas" type="number" min="1" value="1">
+        <label>Factura / Pedimento</label><input id="factura" placeholder="FAC-0001 / PED-1234">
+      </div>
+      <div>
+        <h3>Productos</h3>
+        <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+          <div>
+            <label>EAN / Código</label><input id="codigo" placeholder="EAN13/Interno">
+          </div>
+          <div>
+            <label>Descripción</label><input id="descripcion" placeholder="BROCA SDS PLUS">
+          </div>
+          <div>
+            <label>Cantidad</label><input id="cantidad" type="number" min="1" value="1">
+          </div>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button id="agregar">Agregar</button>
+          <button id="limpiar" class="secondary">Limpiar lista</button>
+        </div>
+        <table id="tabla">
+          <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th>Cant.</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:14px">
+      <div>
+        <h3>QR del reporte</h3>
+        <div id="qr">QR aparecerá tras guardar.</div>
+        <p class="note">El QR usa el esquema <code>aldisan://reporte/&lt;id&gt;</code> para recuperar el JSON almacenado localmente.</p>
+        <div class="actions">
+          <button id="guardar">Guardar Reporte + Generar QR</button>
+          <button id="imprimir" disabled>Imprimir</button>
+          <button id="exportar" disabled>Exportar CSV</button>
+        </div>
+        <p id="estado" class="note"></p>
+      </div>
+      <div>
+        <h3>Vista previa de impresión</h3>
+        <div class="note">Incluye el QR y los datos clave para pegar en el embarque.</div>
+        <div class="panel" style="background:#0f1422;border-style:dashed;margin-top:8px">
+          <div class="kv" id="printKv">
+            <b>Operador</b><span>—</span>
+            <b>Placas</b><span>—</span>
+            <b>Unidad</b><span>—</span>
+            <b>Marca</b><span>—</span>
+            <b>Tarimas</b><span>—</span>
+            <b>Factura/Pedimento</b><span>—</span>
+            <b>Reporte ID</b><span>—</span>
+          </div>
+          <div id="qrPrint" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PANEL: ESCANEAR -->
+  <section id="tab-escanear" class="panel" hidden>
+    <div class="grid cols-2">
+      <div>
+        <h3>Escanear QR</h3>
+        <div id="reader" style="width:100%;max-width:520px;margin:auto"></div>
+        <p class="note">Apunta al QR del reporte. Formato esperado: <code>aldisan://reporte/&lt;id&gt;</code>.</p>
+        <div class="actions">
+          <button id="reabrir" class="secondary">Reiniciar cámara</button>
+        </div>
+        <p id="estadoScan" class="note"></p>
+      </div>
+      <div>
+        <h3>Reporte encontrado</h3>
+        <div id="detalles" class="kv">
+          <b>Reporte ID</b><span>—</span>
+          <b>Creado</b><span>—</span>
+          <b>Operador</b><span>—</span>
+          <b>Placas</b><span>—</span>
+          <b>Tipo</b><span>—</span>
+          <b>Marca</b><span>—</span>
+          <b>Tarimas</b><span>—</span>
+          <b>Factura/Pedimento</b><span>—</span>
+        </div>
+        <table id="tablaScan"><thead><tr><th>#</th><th>Código</th><th>Descripción</th><th>Cant.</th></tr></thead><tbody></tbody></table>
+        <div class="actions" style="margin-top:10px">
+          <button id="imprimirScan" disabled>Imprimir</button>
+          <button id="exportarScan" disabled>Exportar CSV</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PANEL: HISTORIAL -->
+  <section id="tab-historial" class="panel" hidden>
+    <h3>Reportes guardados en este dispositivo</h3>
+    <ul id="lista" class="list" style="list-style:none;padding:0;margin:0"></ul>
+    <div class="actions" style="margin-top:10px">
+      <button id="borrarTodo" class="secondary">Borrar historial local</button>
+    </div>
+    <p class="note">Se almacenan hasta 200 reportes recientes (solo en este dispositivo/navegador).</p>
+  </section>
+</div>
+
+<script>
+  // ========= UTILIDADES =========
+  const $ = s => document.querySelector(s);
+  const $$ = s => [...document.querySelectorAll(s)];
+  const uuid = () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+  );
+  const keyFor = id => `aldisan:reporte:${id}`;
+  const indexKey = `aldisan:reporte:index`;
+
+  // ========= TABS =========
+  const showTab = (name)=>{
+    $$('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+    $('#tab-generar').hidden = name!=='generar';
+    $('#tab-escanear').hidden = name!=='escanear';
+    $('#tab-historial').hidden = name!=='historial';
+    if(name==='escanear') startScanner();
+    if(name==='historial') renderHistorial();
+  };
+  $$('.tabbtn').forEach(b=> b.onclick = ()=> showTab(b.dataset.tab));
+
+  // ========= GENERAR =========
+  const items = [];
+  let lastId = null;
+  let qrcodeMain = null, qrcodePrint = null;
+
+  const renderTabla = () => {
+    const tbody = $('#tabla tbody');
+    tbody.innerHTML = items.map((it,i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td>${it.codigo}</td>
+        <td>${it.descripcion}</td>
+        <td>${it.cantidad}</td>
+        <td><button class="secondary rm" data-i="${i}">✕</button></td>
+      </tr>`).join("") || `<tr><td colspan="5" style="color:#9bb0c9">Sin productos aún.</td></tr>`;
+    tbody.querySelectorAll('.rm').forEach(btn=>{
+      btn.onclick = ()=>{ items.splice(+btn.dataset.i,1); renderTabla(); };
+    });
+  };
+
+  $('#agregar').onclick = () => {
+    const codigo = $('#codigo').value.trim();
+    const descripcion = $('#descripcion').value.trim();
+    const cantidad = parseInt($('#cantidad').value,10)||0;
+    if(!codigo || !descripcion || cantidad<=0){ alert('Completa código, descripción y cantidad.'); return; }
+    items.push({codigo, descripcion, cantidad});
+    $('#codigo').value=''; $('#descripcion').value=''; $('#cantidad').value=1;
+    renderTabla();
+  };
+  $('#limpiar').onclick = () => { if(confirm('¿Vaciar la lista de productos?')){ items.length=0; renderTabla(); } };
+
+  const saveReport = (data) => {
+    const id = uuid();
+    const payload = {...data, reportId:id, createdAt: new Date().toISOString()};
+    localStorage.setItem(keyFor(id), JSON.stringify(payload));
+    const idx = JSON.parse(localStorage.getItem(indexKey)||'[]');
+    idx.unshift({id, createdAt: payload.createdAt, operador: payload.operador, placas: payload.placas});
+    localStorage.setItem(indexKey, JSON.stringify(idx.slice(0,200)));
+    return id;
+  };
+
+  const fillPrintPreview = (r) => {
+    const kv = $('#printKv');
+    kv.innerHTML = `
+      <b>Operador</b><span>${r.operador}</span>
+      <b>Placas</b><span>${r.placas}</span>
+      <b>Unidad</b><span>${r.tipo}</span>
+      <b>Marca</b><span>${r.marca}</span>
+      <b>Tarimas</b><span>${r.tarimas}</span>
+      <b>Factura/Pedimento</b><span>${r.factura||'—'}</span>
+      <b>Reporte ID</b><span>${r.reportId}</span>`;
+    // QR de impresión
+    $('#qrPrint').innerHTML = '';
+    qrcodePrint = new QRCode(document.getElementById('qrPrint'), {
+      text: `aldisan://reporte/${r.reportId}`,
+      width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M
+    });
+  };
+
+  $('#guardar').onclick = () => {
+    if(items.length===0){ alert('Agrega al menos un producto.'); return; }
+    const data = {
+      operador: $('#operador').value.trim(),
+      placas: $('#placas').value.trim(),
+      tipo: $('#tipo').value,
+      marca: $('#marca').value.trim(),
+      tarimas: parseInt($('#tarimas').value,10)||0,
+      factura: $('#factura').value.trim(),
+      items
+    };
+    if(!data.operador || !data.placas){ alert('Operador y Placas son obligatorios.'); return; }
+    lastId = saveReport(data);
+
+    // QR principal
+    $('#qr').innerHTML = '';
+    qrcodeMain = new QRCode(document.getElementById('qr'), {
+      text: `aldisan://reporte/${lastId}`,
+      width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M
+    });
+
+    const raw = localStorage.getItem(keyFor(lastId));
+    const rep = JSON.parse(raw);
+    fillPrintPreview(rep);
+
+    $('#estado').textContent = `Reporte guardado con ID: ${lastId}`;
+    $('#imprimir').disabled = false;
+    $('#exportar').disabled = false;
+    alert('¡Reporte guardado y QR generado!');
+  };
+
+  $('#imprimir').onclick = () => window.print();
+
+  const exportCSV = (r) => {
+    const rows = [
+      ['Reporte ID', r.reportId],
+      ['Creado', r.createdAt],
+      ['Operador', r.operador],
+      ['Placas', r.placas],
+      ['Tipo', r.tipo],
+      ['Marca', r.marca],
+      ['Tarimas', r.tarimas],
+      ['Factura/Pedimento', r.factura||''],
+      [],
+      ['#','Código','Descripción','Cantidad'],
+      ...r.items.map((it,i)=>[i+1, it.codigo, `"${it.descripcion.replace(/"/g,'""')}"`, it.cantidad])
+    ];
+    const csv = rows.map(row=>row.join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `reporte_${r.reportId}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  $('#exportar').onclick = () => {
+    if(!lastId){ alert('Primero guarda el reporte.'); return; }
+    const r = JSON.parse(localStorage.getItem(keyFor(lastId))||'null');
+    if(!r){ alert('No se encontró el reporte.'); return; }
+    exportCSV(r);
+  };
+
+  // ========= ESCANEAR =========
+  let html5Qrcode = null;
+  let lastScanId = null;
+
+  const parseAldisanUri = (text) => {
+    try{
+      const u = new URL(text.replace('aldisan://','https://aldisan.local/'));
+      const parts = u.pathname.split('/').filter(Boolean);
+      if(parts[0]==='reporte' && parts[1]) return parts[1];
+    }catch(e){}
+    return null;
+  };
+
+  const fillDetalles = (r) => {
+    const d = $('#detalles');
+    d.innerHTML = `
+      <b>Reporte ID</b><span>${r.reportId||'—'}</span>
+      <b>Creado</b><span>${new Date(r.createdAt).toLocaleString()}</span>
+      <b>Operador</b><span>${r.operador}</span>
+      <b>Placas</b><span>${r.placas}</span>
+      <b>Tipo</b><span>${r.tipo}</span>
+      <b>Marca</b><span>${r.marca}</span>
+      <b>Tarimas</b><span>${r.tarimas}</span>
+      <b>Factura/Pedimento</b><span>${r.factura||'—'}</span>`;
+    const tbody = $('#tablaScan tbody');
+    tbody.innerHTML = r.items.map((it,i)=>`<tr><td>${i+1}</td><td>${it.codigo}</td><td>${it.descripcion}</td><td>${it.cantidad}</td></tr>`).join('')
+      || `<tr><td colspan="4" style="color:#9bb0c9">Sin productos en este reporte.</td></tr>`;
+    $('#imprimirScan').disabled = false;
+    $('#exportarScan').disabled = false;
+  };
+
+  const onScanSuccess = (decodedText) => {
+    $('#estadoScan').textContent = `QR leído: ${decodedText}`;
+    const id = parseAldisanUri(decodedText);
+    if(!id){ alert('Formato de QR no válido.'); return; }
+    lastScanId = id;
+    const raw = localStorage.getItem(keyFor(id));
+    if(!raw){ alert('Reporte no encontrado en este dispositivo.'); return; }
+    const rep = JSON.parse(raw);
+    fillDetalles(rep);
+  };
+  const onScanFailure = (_e) => { /* silencioso */ };
+
+  async function startScanner(){
+    try{
+      if(html5Qrcode){ await html5Qrcode.stop(); }
+      html5Qrcode = new Html5Qrcode('reader');
+      const cams = await Html5Qrcode.getCameras();
+      const camId = cams?.[0]?.id || { facingMode: 'environment' };
+      await html5Qrcode.start(camId, { fps: 10, qrbox: { width: 280, height: 280 } }, onScanSuccess, onScanFailure);
+      $('#estadoScan').textContent = 'Cámara activa. Escanea el QR del reporte.';
+    }catch(err){ $('#estadoScan').textContent = 'No se pudo iniciar la cámara: ' + err; console.error(err); }
+  }
+  $('#reabrir').onclick = startScanner;
+
+  $('#imprimirScan').onclick = () => window.print();
+  $('#exportarScan').onclick = () => {
+    if(!lastScanId){ alert('Escanea un QR primero.'); return; }
+    const r = JSON.parse(localStorage.getItem(keyFor(lastScanId))||'null');
+    if(!r){ alert('No se encontró el reporte.'); return; }
+    exportCSV(r);
+  };
+
+  // ========= HISTORIAL =========
+  const renderHistorial = () => {
+    const lista = $('#lista');
+    const idx = JSON.parse(localStorage.getItem(indexKey)||'[]');
+    if(!idx.length){ lista.innerHTML = '<li style="color:#9bb0c9">No hay reportes almacenados.</li>'; return; }
+    lista.innerHTML = idx.map(it=>{
+      const fecha = new Date(it.createdAt).toLocaleString();
+      return `<li>
+        <div>
+          <div><span class="tag">${fecha}</span></div>
+          <div style="margin-top:4px">ID: <b>${it.id}</b> · Operador: ${it.operador||'—'} · Placas: ${it.placas||'—'}</div>
+        </div>
+        <div class="actions">
+          <button class="secondary ver" data-id="${it.id}">Ver</button>
+          <button class="secondary qr" data-id="${it.id}">QR</button>
+          <button class="secondary del" data-id="${it.id}">Eliminar</button>
+        </div>
+      </li>`;
+    }).join('');
+
+    lista.querySelectorAll('.ver').forEach(b=> b.onclick = ()=>{
+      const raw = localStorage.getItem(keyFor(b.dataset.id));
+      if(!raw){ alert('No se encontró el reporte.'); return; }
+      const r = JSON.parse(raw);
+      showTab('escanear');
+      fillDetalles(r);
+      lastScanId = r.reportId;
+    });
+
+    lista.querySelectorAll('.qr').forEach(b=> b.onclick = ()=>{
+      const raw = localStorage.getItem(keyFor(b.dataset.id));
+      if(!raw){ alert('No se encontró el reporte.'); return; }
+      const r = JSON.parse(raw);
+      // Mostrar QR en modal simple
+      const dlg = document.createElement('dialog');
+      dlg.style.padding = '0';
+      dlg.innerHTML = `<div style="padding:16px;background:#0f1422;border:1px solid var(--border);border-radius:12px">
+        <h3 style="margin:0 0 8px">QR – ${r.reportId}</h3>
+        <div id="qrModal" style="display:grid;place-items:center;min-height:220px;background:#0b1220;border:1px dashed var(--border);border-radius:12px"></div>
+        <div style="margin-top:10px;text-align:right"><button id="cerrarM" class="secondary">Cerrar</button></div>
+      </div>`;
+      document.body.appendChild(dlg);
+      dlg.showModal();
+      new QRCode(dlg.querySelector('#qrModal'), { text:`aldisan://reporte/${r.reportId}`, width:220, height:220, correctLevel: QRCode.CorrectLevel.M });
+      dlg.querySelector('#cerrarM').onclick = ()=>{ dlg.close(); dlg.remove(); };
+    });
+
+    lista.querySelectorAll('.del').forEach(b=> b.onclick = ()=>{
+      const id = b.dataset.id;
+      if(confirm('¿Eliminar este reporte del dispositivo?')){
+        localStorage.removeItem(keyFor(id));
+        const idx2 = JSON.parse(localStorage.getItem(indexKey)||'[]').filter(x=>x.id!==id);
+        localStorage.setItem(indexKey, JSON.stringify(idx2));
+        renderHistorial();
+      }
+    });
+  };
+
+  $('#borrarTodo').onclick = ()=>{
+    if(!confirm('Esto borrará todos los reportes locales.')) return;
+    const idx = JSON.parse(localStorage.getItem(indexKey)||'[]');
+    idx.forEach(it=> localStorage.removeItem(keyFor(it.id)));
+    localStorage.removeItem(indexKey);
+    renderHistorial();
+  };
+
+  // Inicial
+  renderTabla();
+  // Por defecto queda en Generar.
+</script>
+</body>
+</html>
